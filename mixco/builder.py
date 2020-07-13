@@ -141,7 +141,7 @@ class MixCo(nn.Module):
             # undo shuffle
             k = self._batch_unshuffle_ddp(k, idx_unshuffle)
         
-        
+
         with torch.no_grad():
             im_mix, lam = self.data_mixer(im_q, im_k, alpha=self.alpha)
             mix_target = lam*q + (1-lam)*k
@@ -164,7 +164,7 @@ class MixCo(nn.Module):
 
         # labels: positive key indicators
         labels = torch.zeros(logits.shape[0], dtype=torch.long).cuda()
-
+        
         # dequeue and enqueue
         self._dequeue_and_enqueue(k)
 
