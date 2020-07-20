@@ -79,7 +79,7 @@ parser.add_argument('--seed', default=None, type=int,
                     help='seed for initializing training. ')
 parser.add_argument('--gpu', default=None, type=int,
                     help='GPU id to use.')
-parser.add_argument('--multiprocessing-distributed', action='store_false',
+parser.add_argument('--multiprocessing-distributed', action='store_true',
                     help='Use multi-processing distributed training to launch '
                          'N processes per node, which has N GPUs. This is the '
                          'fastest way to use PyTorch for either single node or '
@@ -96,16 +96,17 @@ parser.add_argument('--moco-t', default=0.07, type=float,
                     help='softmax temperature (default: 0.07)')
 
 # options for moco v2
-parser.add_argument('--mlp', action='store_false',
+parser.add_argument('--mlp', action='store_true',
                     help='use mlp head')
-parser.add_argument('--aug-plus', action='store_false',
+parser.add_argument('--aug-plus', action='store_true',
                     help='use moco v2 data augmentation')
-parser.add_argument('--cos', action='store_false',
+parser.add_argument('--cos', action='store_true',
                     help='use cosine lr schedule')
 
 
 def main():
     args = parser.parse_args()
+    
     if not os.path.isdir(os.path.join('results', args.name, 'moco')):
         os.makedirs(os.path.join('results', args.name, 'moco'))
     if not os.path.isdir(args.data):
@@ -125,12 +126,13 @@ def main():
         warnings.warn('You have chosen a specific GPU. This will completely '
                       'disable data parallelism.')
 
+    ngpus_per_node = torch.cuda.device_count()
+    
     if args.dist_url == "env://" and args.world_size == -1:
         args.world_size = int(os.environ["WORLD_SIZE"])
-
+    
     args.distributed = args.world_size > 1 or args.multiprocessing_distributed
-
-    ngpus_per_node = torch.cuda.device_count()
+    
     
     if args.multiprocessing_distributed:
         # Since we have ngpus_per_node processes per node, the total world_size
@@ -145,10 +147,7 @@ def main():
 
 
 def main_worker(gpu, ngpus_per_node, args):
-    print(ngpus_per_node)
-    gpu = gpu + ngpus_per_node
     args.gpu = gpu
-    print(gpu, ngpus_per_node)
 
     # suppress printing if not master
     if args.multiprocessing_distributed and args.gpu != 0:
@@ -166,7 +165,7 @@ def main_worker(gpu, ngpus_per_node, args):
             # For multiprocessing distributed training, rank needs to be the
             # global rank among all the processes
             args.rank = args.rank * ngpus_per_node + gpu
-            
+        print('here')
         dist.init_process_group(backend=args.dist_backend, init_method=args.dist_url,
                                 world_size=args.world_size, rank=args.rank)
     # create
