@@ -309,7 +309,7 @@ def main_worker(gpu, ngpus_per_node, args):
                 'state_dict': model.state_dict(),
                 'best_acc1': best_acc1,
                 'optimizer' : optimizer.state_dict(),
-            }, is_best, filename=os.path.join('results', args.name, 'lincls', 'checkpoint_{:04d}.pth.tar'.format(epoch)))
+            }, is_best, filename=os.path.join('results', args.name, 'lincls', 'checkpoint_{:04d}.pth.tar'.format(epoch)), args)
             if epoch == args.start_epoch:
                 sanity_check(model.state_dict(), args.pretrained)
 
@@ -412,10 +412,10 @@ def validate(val_loader, model, criterion, args):
     return top1.avg
 
 
-def save_checkpoint(state, is_best, filename='checkpoint.pth.tar'):
+def save_checkpoint(state, is_best, filename='checkpoint.pth.tar', args):
     torch.save(state, filename)
     if is_best:
-        shutil.copyfile(filename, 'model_best.pth.tar')
+        shutil.copyfile(filename, os.path.join('results', args.name, 'lincls', 'model_best.pth.tar'))
 
 
 def sanity_check(state_dict, pretrained_weights):

@@ -29,7 +29,7 @@ import moco.builder
 from data_utils import *
 
 
-model_dict = {'resnet50': resnet50, 'resnet50_wobn': resnet50_wobn}
+model_dict = {'resnet50': resnet50, 'resnet50_wobn': resnet50_wobn, 'resnet50_bnstat': resnet50_bnstat}
 
 parser = argparse.ArgumentParser(description='PyTorch ImageNet Training')
 parser.add_argument('name',
@@ -270,14 +270,14 @@ def main_worker(gpu, ngpus_per_node, args):
     train_loader = torch.utils.data.DataLoader(
         train_dataset, batch_size=args.batch_size, shuffle=(train_sampler is None),
         num_workers=args.workers, pin_memory=True, sampler=train_sampler, drop_last=True)
-
+    
     for epoch in range(args.start_epoch, args.epochs):
         if args.distributed:
             train_sampler.set_epoch(epoch)
         adjust_learning_rate(optimizer, epoch, args)
 
         # train for one epoch
-        train(train_loader, model, criterion, optimizer, epoch, args)
+        bn_stat = train(train_loader, model, criterion, optimizer, epoch, args)
 
         if not args.multiprocessing_distributed or (args.multiprocessing_distributed
                 and args.rank % ngpus_per_node == 0):
@@ -287,8 +287,12 @@ def main_worker(gpu, ngpus_per_node, args):
                 'state_dict': model.state_dict(),
                 'optimizer' : optimizer.state_dict(),
             }, is_best=False, filename=os.path.join('results', args.name, 'moco', 'checkpoint_{:04d}.pth.tar'.format(epoch)))
-
-
+            
+    if model.bn_stat:
+        with open(os.path.join('results', args.name, 'moco', 'bn_stat.pickle'), 'wb') as f:
+            pickle.dump(bn_stat, f)
+    
+    
 def train(train_loader, model, criterion, optimizer, epoch, args):
     batch_time = AverageMeter('Time', ':6.3f')
     data_time = AverageMeter('Data', ':6.3f')
@@ -334,7 +338,17 @@ def train(train_loader, model, criterion, optimizer, epoch, args):
 
         if i % args.print_freq == 0:
             progress.display(i)
-
+            
+    if model.bn_stat:
+        bn_stat = {}
+        for name in model.named_parameters().keys():
+            if 'bn' in name:
+                bn_stat[name] = {'mean': model.name.mean_array,
+                                 'var': model.name.mean_array}
+            
+        return bn_stat
+    else:
+        return None
 
 def save_checkpoint(state, is_best, filename='checkpoint.pth.tar'):
     torch.save(state, filename)
