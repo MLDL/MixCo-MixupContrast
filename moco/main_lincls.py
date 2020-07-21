@@ -3,7 +3,7 @@
 import argparse
 import builtins
 import os
-os.environ['CUDA_VISIBLE_DEVICES']='3,4' 
+import pickle
 import random
 import shutil
 import time
@@ -22,6 +22,7 @@ import torchvision.transforms as transforms
 import torchvision.datasets as datasets
 #import torchvision.models as models
 from models import *
+from data_utils import *
 
 model_dict = {'resnet50': resnet50, 'resnet50_wobn': resnet50_wobn}
 
@@ -403,8 +404,10 @@ def validate(val_loader, model, criterion, args):
                 progress.display(i)
 
         # TODO: this should also be done with the ProgressMeter
-        print(' * Acc@1 {top1.avg:.3f} Acc@5 {top5.avg:.3f}'
-              .format(top1=top1, top5=top5))
+        msg = ' * Acc@1 {top1.avg:.3f} Acc@5 {top5.avg:.3f}'.format(top1=top1, top5=top5)
+        print(msg)
+        with open(os.path.join('results', args.name, 'lincls', 'valid_acc.pickle'), 'wb') as f:
+            pickle.dump(msg, f)
 
     return top1.avg
 
