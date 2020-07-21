@@ -23,9 +23,11 @@ import torchvision.transforms as transforms
 import torchvision.datasets as datasets
 import torchvision.models as models
 
-import mixco.loader
-import mixco.builder
+import advmoco.loader
+import advmoco.builder
 
+from advmoco.custom_loss import NCEwithPerturbLoss
+from advmoco.generator import Generator
 from Datasets import *
 
 model_names = sorted(name for name in models.__dict__
@@ -53,6 +55,8 @@ parser.add_argument('-b', '--batch-size', default=256, type=int,
                          'using Data Parallel or Distributed Data Parallel')
 parser.add_argument('--lr', '--learning-rate', default=0.03, type=float,
                     metavar='LR', help='initial learning rate', dest='lr')
+parser.add_argument('--lr-g', '--learning-rate-g', default=0.03, type=float,
+                    help='initial learning rate for generator')
 parser.add_argument('--schedule', default=[120, 160], nargs='*', type=int,
                     help='learning rate schedule (when to drop lr by 10x)')
 parser.add_argument('--momentum', default=0.9, type=float, metavar='M',
@@ -60,6 +64,8 @@ parser.add_argument('--momentum', default=0.9, type=float, metavar='M',
 parser.add_argument('--wd', '--weight-decay', default=1e-4, type=float,
                     metavar='W', help='weight decay (default: 1e-4)',
                     dest='weight_decay')
+parser.add_argument('--wd-g', '--weight-decay-g', default=1e-4, type=float,
+                    help='weight decay for generator (default: 1e-4)')
 parser.add_argument('-p', '--print-freq', default=10, type=int,
                     metavar='N', help='print frequency (default: 10)')
 parser.add_argument('--resume', default='', type=str, metavar='PATH',
@@ -165,9 +171,10 @@ def main_worker(gpu, ngpus_per_node, args):
                                 world_size=args.world_size, rank=args.rank)
     # create model
     print("=> creating model '{}'".format(args.arch))
-    model = mixco.builder.MixCo(
+    model = advmoco.builder.AdvmoCo(
         models.__dict__[args.arch],
         args.moco_dim, args.moco_k, args.moco_m, args.moco_t, args.moco_alpha, args.mlp)
+    generator = Generator()
     print(model)
 
     if args.distributed:
@@ -199,11 +206,14 @@ def main_worker(gpu, ngpus_per_node, args):
         raise NotImplementedError("Only DistributedDataParallel is supported.")
 
     # define loss function (criterion) and optimizer
-    criterion = nn.CrossEntropyLoss().cuda(args.gpu)
+    criterion = NCEwithPerturbLoss().cuda(args.gpu)
 
     optimizer = torch.optim.SGD(model.parameters(), args.lr,
                                 momentum=args.momentum,
                                 weight_decay=args.weight_decay)
+    optimizer_g = torch.optim.SGD(generator.parameters(), args.lr_g,
+                                  momentum=args.momentum,
+                                  weight_decay=args.weight_decay_g)  
 
     # optionally resume from a checkpoint
     if args.resume:
@@ -237,7 +247,7 @@ def main_worker(gpu, ngpus_per_node, args):
                 transforms.ColorJitter(0.4, 0.4, 0.4, 0.1)  # not strengthened
             ], p=0.8),
             transforms.RandomGrayscale(p=0.2),
-            transforms.RandomApply([mixco.loader.GaussianBlur([.1, 2.])], p=0.5),
+            transforms.RandomApply([advmoco.loader.GaussianBlur([.1, 2.])], p=0.5),
             transforms.RandomHorizontalFlip(),
             transforms.ToTensor(),
             normalize
@@ -253,7 +263,7 @@ def main_worker(gpu, ngpus_per_node, args):
             normalize
         ]
 
-    train_dataset = TinyImageNet(args.data, transform=mixco.loader.TwoCropsTransform(transforms.Compose(augmentation)))
+    train_dataset = TinyImageNet(args.data, transform=advmoco.loader.TwoCropsTransform(transforms.Compose(augmentation)))
     #train_dataset = datasets.ImageFolder(
     #    traindir,
     #    moco.loader.TwoCropsTransform(transforms.Compose(augmentation)))
@@ -270,10 +280,11 @@ def main_worker(gpu, ngpus_per_node, args):
     for epoch in range(args.start_epoch, args.epochs):
         if args.distributed:
             train_sampler.set_epoch(epoch)
-        adjust_learning_rate(optimizer, epoch, args)
+        adjust_learning_rate(optimizer, epoch, args.lr, args)
+        adjust_learning_rate(optimizer_g, epoch, args.lr_g, args)
 
         # train for one epoch
-        train(train_loader, model, criterion, optimizer, epoch, args)
+        train(train_loader, model, generator, criterion, optimizer, optimizer_g, epoch, args)
 
         if not args.multiprocessing_distributed or (args.multiprocessing_distributed
                 and args.rank % ngpus_per_node == 0):
@@ -285,7 +296,7 @@ def main_worker(gpu, ngpus_per_node, args):
             }, is_best=False, filename=args.exp_name+'.pth.tar'.format(epoch))
 
 
-def train(train_loader, model, criterion, optimizer, epoch, args):
+def train(train_loader, model, generator, criterion, optimizer, optimizer_g, epoch, args):
     batch_time = AverageMeter('Time', ':6.3f')
     data_time = AverageMeter('Data', ':6.3f')
     losses = AverageMeter('Loss', ':.4e')
@@ -298,6 +309,7 @@ def train(train_loader, model, criterion, optimizer, epoch, args):
 
     # switch to train mode
     model.train()
+    generator.train()
 
     end = time.time()
     for i, (images, _) in enumerate(train_loader):
@@ -307,11 +319,20 @@ def train(train_loader, model, criterion, optimizer, epoch, args):
         if args.gpu is not None:
             images[0] = images[0].cuda(args.gpu, non_blocking=True)
             images[1] = images[1].cuda(args.gpu, non_blocking=True)
-
+        
         # compute output
-        output, target, mix_rep, mix_target = model(im_q=images[0], im_k=images[1])
-        loss = criterion(output, target)
-        loss += args.mix_hyper*F.mse_loss(mix_rep, mix_target)
+        epsilon = generator(images[0])
+        q, k, neg, target = model(im_q=images[0], im_k=images[1])
+        loss_g = criterion(q, k, neg, epsilon, target)
+
+        ### find best perturbation ###
+        optimizer_g.zero_grad()
+        loss_g.backward(retain_graph=True)
+        optimizer_g.step()
+        with torch.no_grad():
+            new_epsilon = generator(images[0])
+
+        loss = criterion(q, k, neg, new_epsilon, target)
 
         # acc1/acc5 are (K+1)-way contrast classifier accuracy
         # measure accuracy and record loss
@@ -380,9 +401,8 @@ class ProgressMeter(object):
         return '[' + fmt + '/' + fmt.format(num_batches) + ']'
 
 
-def adjust_learning_rate(optimizer, epoch, args):
+def adjust_learning_rate(optimizer, epoch, lr, args):
     """Decay the learning rate based on schedule"""
-    lr = args.lr
     if args.cos:  # cosine lr schedule
         lr *= 0.5 * (1. + math.cos(math.pi * epoch / args.epochs))
     else:  # stepwise lr schedule
