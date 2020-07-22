@@ -24,7 +24,7 @@ import torchvision.datasets as datasets
 from models import *
 from data_utils import *
 
-model_dict = {'resnet50': resnet50, 'resnet50_wobn': resnet50_wobn}
+model_dict = {'resnet50': resnet50, 'resnet50_wobn': resnet50_wobn, 'resnet50_bnstat': resnet50_bnstat}
 
 parser = argparse.ArgumentParser(description='PyTorch ImageNet Training')
 parser.add_argument('name',
@@ -309,7 +309,7 @@ def main_worker(gpu, ngpus_per_node, args):
                 'state_dict': model.state_dict(),
                 'best_acc1': best_acc1,
                 'optimizer' : optimizer.state_dict(),
-            }, is_best, filename=os.path.join('results', args.name, 'lincls', 'checkpoint_{:04d}.pth.tar'.format(epoch)), args)
+            }, is_best, args, filename=os.path.join('results', args.name, 'lincls', 'checkpoint_{:04d}.pth.tar'.format(epoch)))
             if epoch == args.start_epoch:
                 sanity_check(model.state_dict(), args.pretrained)
 
@@ -412,7 +412,7 @@ def validate(val_loader, model, criterion, args):
     return top1.avg
 
 
-def save_checkpoint(state, is_best, filename='checkpoint.pth.tar', args):
+def save_checkpoint(state, is_best, args, filename='checkpoint.pth.tar'):
     torch.save(state, filename)
     if is_best:
         shutil.copyfile(filename, os.path.join('results', args.name, 'lincls', 'model_best.pth.tar'))

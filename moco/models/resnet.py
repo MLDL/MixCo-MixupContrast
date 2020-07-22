@@ -104,8 +104,8 @@ class Bottleneck(nn.Module):
         self.downsample = downsample
         self.stride = stride
         if bn:
-            self.bn1 = norm_layer(planes * self.expansion)
-            self.bn2 = norm_layer(planes * self.expansion)
+            self.bn1 = norm_layer(width)
+            self.bn2 = norm_layer(width)
             self.bn3 = norm_layer(planes * self.expansion)
 
     def forward(self, x):
@@ -141,11 +141,8 @@ class ResNet(nn.Module):
                  bn=True, norm_layer=None):
         super(ResNet, self).__init__()
         self.bn = bn
-        self.bn_stat = False
         if norm_layer is None:
             norm_layer = nn.BatchNorm2d
-        if self.bn and norm_layer is not Noe:
-            self.bn_stat = True
             
         self._norm_layer = norm_layer
 
@@ -235,7 +232,7 @@ class ResNet(nn.Module):
         x = self.layer2(x)
         x = self.layer3(x)
         x = self.layer4(x)
-
+       
         x = self.avgpool(x)
         x = torch.flatten(x, 1)
         x = self.fc(x)

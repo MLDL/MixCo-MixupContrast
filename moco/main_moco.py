@@ -4,6 +4,7 @@ import argparse
 import builtins
 import math
 import os
+import pickle
 import random
 import shutil
 import time
@@ -54,6 +55,8 @@ parser.add_argument('-b', '--batch-size', default=256, type=int,
                          'using Data Parallel or Distributed Data Parallel')
 parser.add_argument('--bn-shuffle', default=False, 
                     help='whether to use bn shuffle or not')
+parser.add_argument('--bn-stat', default=False,
+		    help='whether to store bn statistic or not')
 parser.add_argument('--lr', '--learning-rate', default=0.03, type=float,
                     metavar='LR', help='initial learning rate', dest='lr')
 parser.add_argument('--schedule', default=[120, 160], nargs='*', type=int,
@@ -288,7 +291,7 @@ def main_worker(gpu, ngpus_per_node, args):
                 'optimizer' : optimizer.state_dict(),
             }, is_best=False, filename=os.path.join('results', args.name, 'moco', 'checkpoint_{:04d}.pth.tar'.format(epoch)))
             
-    if model.bn_stat:
+    if args.bn_stat:
         with open(os.path.join('results', args.name, 'moco', 'bn_stat.pickle'), 'wb') as f:
             pickle.dump(bn_stat, f)
     
@@ -338,14 +341,23 @@ def train(train_loader, model, criterion, optimizer, epoch, args):
 
         if i % args.print_freq == 0:
             progress.display(i)
-            
-    if model.bn_stat:
+
+    if args.bn_stat:
         bn_stat = {}
-        for name in model.named_parameters().keys():
-            if 'bn' in name:
-                bn_stat[name] = {'mean': model.name.mean_array,
-                                 'var': model.name.mean_array}
-            
+        for name, p in model.named_parameters():
+            if 'bn' in name and 'weight' in name:
+                if 'layer' in name:
+                    bn_name = name[-10:-7]
+                    idx = name[-12]
+                    layer_name = name[:-13]
+                   
+                    model_name = '%s[%s].%s' % (layer_name, idx, bn_name)
+                else:
+                    model_name = name[:-7]
+                    
+                bn_stat[name] = {'mean': eval('model.%s.mean_array' % model_name),
+                                 'var': eval('model.%s.var_array' % model_name)}
+           
         return bn_stat
     else:
         return None

@@ -15,7 +15,7 @@ class BatchNorm(nn.BatchNorm2d):
         if self.training is True:
             mini_batch_mean = torch.mean(x, dim=(0, 2, 3)).detach()
             mini_batch_var = torch.var(x, dim=(0, 2, 3)).detach()
-                self.mean_array.append(round(torch.norm(mini_batch_mean).data.cpu().item(), 4))
+            self.mean_array.append(round(torch.norm(mini_batch_mean).data.cpu().item(), 4))
             self.var_array.append(round(torch.norm(mini_batch_var).data.cpu().item(), 4))
         
         return super().forward(x)
