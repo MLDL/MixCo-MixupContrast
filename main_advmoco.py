@@ -55,8 +55,6 @@ parser.add_argument('-b', '--batch-size', default=256, type=int,
                          'using Data Parallel or Distributed Data Parallel')
 parser.add_argument('--lr', '--learning-rate', default=0.03, type=float,
                     metavar='LR', help='initial learning rate', dest='lr')
-parser.add_argument('--lr-g', '--learning-rate-g', default=0.03, type=float,
-                    help='initial learning rate for generator')
 parser.add_argument('--schedule', default=[120, 160], nargs='*', type=int,
                     help='learning rate schedule (when to drop lr by 10x)')
 parser.add_argument('--momentum', default=0.9, type=float, metavar='M',
@@ -64,8 +62,6 @@ parser.add_argument('--momentum', default=0.9, type=float, metavar='M',
 parser.add_argument('--wd', '--weight-decay', default=1e-4, type=float,
                     metavar='W', help='weight decay (default: 1e-4)',
                     dest='weight_decay')
-parser.add_argument('--wd-g', '--weight-decay-g', default=1e-4, type=float,
-                    help='weight decay for generator (default: 1e-4)')
 parser.add_argument('-p', '--print-freq', default=10, type=int,
                     metavar='N', help='print frequency (default: 10)')
 parser.add_argument('--resume', default='', type=str, metavar='PATH',
@@ -111,6 +107,12 @@ parser.add_argument('--aug-plus', action='store_true',
                     help='use moco v2 data augmentation')
 parser.add_argument('--cos', action='store_true',
                     help='use cosine lr schedule')
+
+# options for advmoco
+parser.add_argument('--lr-g', '--learning-rate-g', default=0.003, type=float,
+                    help='initial learning rate for generator')
+parser.add_argument('--start-adv', default=50, type=int,
+                    help='epoch at which adversarial learning starts')
 
 
 def main():
@@ -175,7 +177,7 @@ def main_worker(gpu, ngpus_per_node, args):
         models.__dict__[args.arch],
         args.moco_dim, args.moco_k, args.moco_m, args.moco_t, args.moco_alpha, args.mlp)
     generator = Generator()
-    print(model)
+    # print(model)
 
     if args.distributed:
         # For multiprocessing distributed, DistributedDataParallel constructor
@@ -184,20 +186,25 @@ def main_worker(gpu, ngpus_per_node, args):
         if args.gpu is not None:
             torch.cuda.set_device(args.gpu)
             model.cuda(args.gpu)
+            generator.cuda(args.gpu)
             # When using a single GPU per process and per
             # DistributedDataParallel, we need to divide the batch size
             # ourselves based on the total number of GPUs we have
             args.batch_size = int(args.batch_size / ngpus_per_node)
             args.workers = int((args.workers + ngpus_per_node - 1) / ngpus_per_node)
             model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[args.gpu])
+            generator = torch.nn.parallel.DistributedDataParallel(generator, device_ids=[args.gpu])
         else:
             model.cuda()
+            generator.cuda()
             # DistributedDataParallel will divide and allocate batch_size to all
             # available GPUs if device_ids are not set
             model = torch.nn.parallel.DistributedDataParallel(model)
+            generator = torch.nn.parallel.DistributedDataParallel(generator)
     elif args.gpu is not None:
         torch.cuda.set_device(args.gpu)
         model = model.cuda(args.gpu)
+        generator = generator.cuda(args.gpu)
         # comment out the following line for debugging
         raise NotImplementedError("Only DistributedDataParallel is supported.")
     else:
@@ -213,7 +220,7 @@ def main_worker(gpu, ngpus_per_node, args):
                                 weight_decay=args.weight_decay)
     optimizer_g = torch.optim.SGD(generator.parameters(), args.lr_g,
                                   momentum=args.momentum,
-                                  weight_decay=args.weight_decay_g)  
+                                  weight_decay=args.weight_decay*10)  
 
     # optionally resume from a checkpoint
     if args.resume:
@@ -323,20 +330,26 @@ def train(train_loader, model, generator, criterion, optimizer, optimizer_g, epo
         # compute output
         epsilon = generator(images[0])
         q, k, neg, target = model(im_q=images[0], im_k=images[1])
-        loss_g = criterion(q, k, neg, epsilon, target)
 
-        ### find best perturbation ###
-        optimizer_g.zero_grad()
-        loss_g.backward(retain_graph=True)
-        optimizer_g.step()
-        with torch.no_grad():
-            new_epsilon = generator(images[0])
+        if epoch >= args.start_adv:
+            ### find best perturbation ###
+            loss_g = - criterion(q, k, neg, epsilon, target)
+            optimizer_g.zero_grad()
+            loss_g.backward(retain_graph=True)
+            optimizer_g.step()
+
+            with torch.no_grad():
+                generator.eval()
+                new_epsilon = generator(images[0])
+                generator.train()
+        else:
+            new_epsilon = torch.zeros_like(q).cuda(args.gpu)
 
         loss = criterion(q, k, neg, new_epsilon, target)
 
         # acc1/acc5 are (K+1)-way contrast classifier accuracy
         # measure accuracy and record loss
-        acc1, acc5 = accuracy(output, target, topk=(1, 5))
+        acc1, acc5 = accuracy(q, k, neg, target, topk=(1, 5))
         losses.update(loss.item(), images[0].size(0))
         top1.update(acc1[0], images[0].size(0))
         top5.update(acc5[0], images[0].size(0))
@@ -412,13 +425,16 @@ def adjust_learning_rate(optimizer, epoch, lr, args):
         param_group['lr'] = lr
 
 
-def accuracy(output, target, topk=(1,)):
+def accuracy(q, k, neg, target, topk=(1,)):
     """Computes the accuracy over the k top predictions for the specified values of k"""
     with torch.no_grad():
         maxk = max(topk)
         batch_size = target.size(0)
+        l_pos = torch.einsum('nc,nc->n', [q, k]).unsqueeze(-1)
+        l_neg = torch.einsum('nc,ck->nk', [q, neg])
+        logits = torch.cat([l_pos, l_neg], dim=1)
 
-        _, pred = output.topk(maxk, 1, True, True)
+        _, pred = logits.topk(maxk, 1, True, True)
         pred = pred.t()
         correct = pred.eq(target.view(1, -1).expand_as(pred))
 

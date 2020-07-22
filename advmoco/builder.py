@@ -148,6 +148,7 @@ class AdvmoCo(nn.Module):
         # l_pos = torch.einsum('nc,nc->n', [q, k]).unsqueeze(-1)
         # # negative logits: NxK
         # l_neg = torch.einsum('nc,ck->nk', [q, self.queue.clone().detach()])
+        neg = self.queue.clone().detach()
 
         # # logits: Nx(1+K)
         # logits = torch.cat([l_pos, l_neg], dim=1)
@@ -161,7 +162,7 @@ class AdvmoCo(nn.Module):
         # dequeue and enqueue
         self._dequeue_and_enqueue(k)
 
-        return q, k, self.queue.clone().detach(), labels
+        return q, k, neg, labels
 
 
     @torch.no_grad()

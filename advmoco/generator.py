@@ -106,4 +106,5 @@ class Generator(nn.Module):
         x = self.layer2(x)
         x = self.avgpool(x) #[B,128,1,1]
         
-        return x.squeeze(-1).squeeze(-1)
+        x = nn.functional.normalize(x.squeeze(-1).squeeze(-1), dim=1)
+        return x
