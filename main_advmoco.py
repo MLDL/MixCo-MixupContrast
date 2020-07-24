@@ -220,7 +220,7 @@ def main_worker(gpu, ngpus_per_node, args):
                                 weight_decay=args.weight_decay)
     optimizer_g = torch.optim.SGD(generator.parameters(), args.lr_g,
                                   momentum=args.momentum,
-                                  weight_decay=args.weight_decay*10)  
+                                  weight_decay=args.weight_decay)  
 
     # optionally resume from a checkpoint
     if args.resume:
