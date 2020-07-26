@@ -54,7 +54,7 @@ class BasicBlock(nn.Module):
 
 # based on ResNet18
 class Generator(nn.Module):
-    def __init__(self, block=BasicBlock):
+    def __init__(self, block=BasicBlock, fc_dim=128):
         super(Generator, self).__init__()
         self._norm_layer = nn.BatchNorm2d
         self.inplanes = 64
@@ -70,6 +70,7 @@ class Generator(nn.Module):
         self.layer1 = self._make_layer(block, 64, 2, stride=3)
         self.layer2 = self._make_layer(block, 128, 2, stride=2)
         self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
+        self.linear = nn.Linear(fc_dim*2, fc_dim)
 
     def _make_layer(self, block, planes, blocks, stride=1, dilate=False):
         norm_layer = self._norm_layer
@@ -95,7 +96,8 @@ class Generator(nn.Module):
 
         return nn.Sequential(*layers)
     
-    def forward(self, x):
+    # conditioned on encoder features
+    def forward(self, x, z):
         x = self.conv1(x)
         x = self.bn1(x)
         x = self.relu(x)
@@ -105,6 +107,24 @@ class Generator(nn.Module):
         x = self.maxpool(x)
         x = self.layer2(x)
         x = self.avgpool(x) #[B,128,1,1]
-        
+
         x = nn.functional.normalize(x.squeeze(-1).squeeze(-1), dim=1)
+        out = torch.cat((x, z), dim=1) #[B,256]
+        out = nn.functional.normalize(self.linear(out), dim=1)        
+        
+        return out
+
+
+class LinearGenerator(nn.Module):
+    def __init__(self, dim):
+        super(LinearGenerator, self).__init__()
+        self.linear1 = nn.Linear(dim, 2*dim)
+        self.relu = nn.ReLU(inplace=True)
+        self.linear2 = nn.Linear(2*dim, dim)
+
+    def forward(self, x):
+        x = self.linear1(x)
+        x = self.relu(x)
+        x = self.linear2(x)
+        x = nn.functional.normalize(x, dim=1)
         return x

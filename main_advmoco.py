@@ -321,15 +321,15 @@ def train(train_loader, model, generator, criterion, optimizer, optimizer_g, epo
     end = time.time()
     for i, (images, _) in enumerate(train_loader):
         # measure data loading time
-        data_time.update(time.time() - end)
+        # data_time.update(time.time() - end)
 
         if args.gpu is not None:
             images[0] = images[0].cuda(args.gpu, non_blocking=True)
             images[1] = images[1].cuda(args.gpu, non_blocking=True)
         
         # compute output
-        epsilon = generator(images[0])
         q, k, neg, target = model(im_q=images[0], im_k=images[1])
+        epsilon = generator(images[0], q.detach())
 
         if epoch >= args.start_adv:
             ### find best perturbation ###
@@ -340,7 +340,7 @@ def train(train_loader, model, generator, criterion, optimizer, optimizer_g, epo
 
             with torch.no_grad():
                 generator.eval()
-                new_epsilon = generator(images[0])
+                new_epsilon = generator(images[0], q.detach())
                 generator.train()
         else:
             new_epsilon = torch.zeros_like(q).cuda(args.gpu)
@@ -360,8 +360,8 @@ def train(train_loader, model, generator, criterion, optimizer, optimizer_g, epo
         optimizer.step()
 
         # measure elapsed time
-        batch_time.update(time.time() - end)
-        end = time.time()
+        # batch_time.update(time.time() - end)
+        # end = time.time()
 
         if i % args.print_freq == 0:
             progress.display(i)

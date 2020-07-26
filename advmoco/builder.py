@@ -126,7 +126,6 @@ class AdvmoCo(nn.Module):
         # compute query features
         q = self.encoder_q(im_q)  # queries: NxC
         q = nn.functional.normalize(q, dim=1)
-        
 
         # compute key features
         with torch.no_grad():  # no gradient to keys
