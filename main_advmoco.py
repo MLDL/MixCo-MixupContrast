@@ -113,6 +113,8 @@ parser.add_argument('--lr-g', '--learning-rate-g', default=0.003, type=float,
                     help='initial learning rate for generator')
 parser.add_argument('--start-adv', default=50, type=int,
                     help='epoch at which adversarial learning starts')
+parser.add_argument('--inner-step', default=1, type=int,
+                    help='number of steps for generator optim')
 
 
 def main():
@@ -332,20 +334,18 @@ def train(train_loader, model, generator, criterion, optimizer, optimizer_g, epo
         epsilon = generator(images[0], q.detach())
 
         if epoch >= args.start_adv:
-            ### find best perturbation ###
-            loss_g = - criterion(q, k, neg, epsilon, target)
-            optimizer_g.zero_grad()
-            loss_g.backward(retain_graph=True)
-            optimizer_g.step()
-
-            with torch.no_grad():
-                generator.eval()
+            ### find the best perturbation ###
+            new_epsilon = epsilon
+            for step in range(args.inner_step):
+                loss_g = - criterion(q.detach(), k.detach(), neg.detach(), new_epsilon, target)
+                optimizer_g.zero_grad()
+                loss_g.backward()
+                optimizer_g.step()
                 new_epsilon = generator(images[0], q.detach())
-                generator.train()
         else:
             new_epsilon = torch.zeros_like(q).cuda(args.gpu)
 
-        loss = criterion(q, k, neg, new_epsilon, target)
+        loss = criterion(q, k, neg, new_epsilon.detach(), target)
 
         # acc1/acc5 are (K+1)-way contrast classifier accuracy
         # measure accuracy and record loss
