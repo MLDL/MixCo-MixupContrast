@@ -1,13 +1,14 @@
 import torch
 import torch.nn as nn
-from .bn_stat import *
+from .bn import *
 try:
     from torch.hub import load_state_dict_from_url
 except ImportError:
     from torch.utils.model_zoo import load_url as load_state_dict_from_url
 
 
-__all__ = ['ResNet', 'resnet18', 'resnet34', 'resnet50', 'resnet50_wobn', 
+__all__ = ['ResNet', 'resnet18', 'resnet18_wobn', 'resnet18_bnstat', 'resnet18_layernorm',
+           'resnet18_innorm', 'resnet34', 'resnet50', 'resnet50_wobn', 
            'resnet50_bnstat', 'resnet101', 'resnet152', 'resnext50_32x4d', 'resnext101_32x8d',
            'wide_resnet50_2', 'wide_resnet101_2']
 
@@ -223,7 +224,9 @@ class ResNet(nn.Module):
         # See note [TorchScript super()]
         x = self.conv1(x)
         if self.bn:
+            print('before', x.shape)
             x = self.bn1(x)
+            print('after', x.shape)
             
         x = self.relu(x)
         x = self.maxpool(x)
@@ -260,6 +263,25 @@ def resnet18(pretrained=False, progress=True, **kwargs):
         progress (bool): If True, displays a progress bar of the download to stderr
     """
     return _resnet('resnet18', BasicBlock, [2, 2, 2, 2], pretrained, progress,
+                   **kwargs)
+
+
+def resnet18_wobn(pretrained=False, progress=True, bn=False, **kwargs):
+    return _resnet('resnet18', BasicBlock, [2, 2, 2, 2], pretrained, progress, bn=bn,
+                   **kwargs)
+
+
+def resnet18_bnstat(pretrained=False, progress=True, norm_layer=BatchNorm, **kwargs):
+    return _resnet('resnet18', BasicBlock, [2, 2, 2, 2], pretrained, progress, norm_layer=norm_layer,
+                   **kwargs)
+
+
+def resnet18_layernorm(pretrained=False, progress=True, norm_layer=LayerNorm, **kwargs):
+    return _resnet('resnet18', BasicBlock, [2, 2, 2, 2], pretrained, progress, norm_layer=norm_layer,
+                   **kwargs)
+
+def resnet18_innorm(pretrained=False, progress=True, norm_layer=nn.InstanceNorm2d, **kwargs):
+    return _resnet('resnet18', BasicBlock, [2, 2, 2, 2], pretrained, progress, norm_layer=norm_layer,
                    **kwargs)
 
 

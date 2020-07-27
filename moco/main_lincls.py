@@ -24,7 +24,10 @@ import torchvision.datasets as datasets
 from models import *
 from data_utils import *
 
-model_dict = {'resnet50': resnet50, 'resnet50_wobn': resnet50_wobn, 'resnet50_bnstat': resnet50_bnstat}
+model_dict = {'resnet18': resnet18, 'resnet18_wobn': resnet18_wobn, 'resnet18_bnstat': resnet18_bnstat,
+              'resnet18_layernorm': resnet18_layernorm, 'resnet18_innorm': resnet18_innorm,
+              'resnet50': resnet50, 'resnet50_wobn': resnet50_wobn, 'resnet50_bnstat': resnet50_bnstat}
+
 
 parser = argparse.ArgumentParser(description='PyTorch ImageNet Training')
 parser.add_argument('name',
