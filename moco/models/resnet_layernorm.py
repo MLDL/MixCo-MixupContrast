@@ -24,36 +24,6 @@ model_urls = {
     'wide_resnet50_2': 'https://download.pytorch.org/models/wide_resnet50_2-95faca4d.pth',
     'wide_resnet101_2': 'https://download.pytorch.org/models/wide_resnet101_2-32ee1156.pth',
 }
-
-
-class LayerNorm(nn.Module):
-    __constants__ = ['normalized_shape', 'eps', 'elementwise_affine']
-    def __init__(self, normalized_shape, eps=1e-5, elementwise_affine=True):
-        super(LayerNorm, self).__init__()
-        if isinstance(normalized_shape, numbers.Integral):
-            normalized_shape = (normalized_shape,)
-        self.normalized_shape = tuple(normalized_shape)
-        self.eps = eps
-        self.elementwise_affine = elementwise_affine
-        if self.elementwise_affine:
-            self.weight = nn.Parameter(torch.Tensor(*self.normalized_shape))
-            self.bias = nn.Parameter(torch.Tensor(*self.normalized_shape))
-        else:
-            self.register_parameter('weight', None)
-            self.register_parameter('bias', None)
-        self.reset_parameters()
-    
-    def reset_parameters(self):
-        if self.elementwise_affine:
-            nn.init.ones_(self.weight)
-            nn.init.zeros_(self.bias)
-
-    def forward(self, input=Tensor):
-
-        return F.layer_norm(input, self.normalized_shape, self.weight, self.bias, self.eps)
-
-    def extra_repr(self):
-        return '{normalized_shape}, eps={eps}, ' \
     
 
 def conv3x3(in_planes, out_planes, stride=1, groups=1, dilation=1):
@@ -172,7 +142,7 @@ class ResNet_LayerNorm(nn.Module):
     def __init__(self, block, layers, num_classes=1000, zero_init_residual=False,
                  groups=1, width_per_group=64, replace_stride_with_dilation=None,
                  bn=True, norm_layer=None):
-        super(ResNet, self).__init__()
+        super(ResNet_LayerNorm, self).__init__()
         self.bn = bn
         if norm_layer is None:
             norm_layer = nn.BatchNorm2d
@@ -284,7 +254,7 @@ class ResNet_LayerNorm(nn.Module):
 
 
 def _resnet(arch, block, layers, pretrained, progress, bn=True, norm_layer=None, **kwargs):
-    model = ResNet(block, layers, bn=bn, norm_layer=norm_layer, **kwargs)
+    model = ResNet_LayerNorm(block, layers, bn=bn, norm_layer=norm_layer, **kwargs)
     if pretrained:
         state_dict = load_state_dict_from_url(model_urls[arch],
                                               progress=progress)
