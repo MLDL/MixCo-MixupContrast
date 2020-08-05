@@ -140,7 +140,6 @@ class AdvmoCo(nn.Module):
             # undo shuffle
             k = self._batch_unshuffle_ddp(k, idx_unshuffle)
         
-        
         # compute logits
         # Einstein sum is more intuitive
         # positive logits: Nx1

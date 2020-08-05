@@ -8,11 +8,15 @@ class NCEwithPerturbLoss(nn.Module):
         self.T = T
         self.criterion = nn.CrossEntropyLoss()
         
-    def forward(self, q, k, neg, epsilon, labels):
+    def forward(self, q, k, neg, epsilon, labels, neg_length=None):
         # positive logits: Nx1
         l_pos = torch.einsum('nc,nc->n', [q, k]).unsqueeze(-1)
+
         # negative logits: NxK
         assert q.size() == epsilon.size()
+        if neg_length is not None:
+            perm = torch.randperm(neg.size(1))[:neg_length]
+            neg = neg[:,perm]
         l_neg = torch.einsum('nc,ck->nk', [q + epsilon, neg])
 
         # logits: Nx(1+K)

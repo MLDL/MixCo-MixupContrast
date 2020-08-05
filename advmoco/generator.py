@@ -118,9 +118,9 @@ class Generator(nn.Module):
 class LinearGenerator(nn.Module):
     def __init__(self, dim):
         super(LinearGenerator, self).__init__()
-        self.linear1 = nn.Linear(dim, 2*dim)
+        self.linear1 = nn.Linear(dim, 4*dim)
         self.relu = nn.ReLU(inplace=True)
-        self.linear2 = nn.Linear(2*dim, dim)
+        self.linear2 = nn.Linear(4*dim, dim)
 
     def forward(self, x):
         x = self.linear1(x)

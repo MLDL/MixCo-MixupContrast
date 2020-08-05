@@ -27,7 +27,7 @@ import advmoco.loader
 import advmoco.builder
 
 from advmoco.custom_loss import NCEwithPerturbLoss
-from advmoco.generator import Generator
+from advmoco.generator import Generator, LinearGenerator
 from Datasets import *
 
 model_names = sorted(name for name in models.__dict__
@@ -37,7 +37,7 @@ model_names = sorted(name for name in models.__dict__
 parser = argparse.ArgumentParser(description='PyTorch ImageNet Training')
 parser.add_argument('data', metavar='DIR',
                     help='path to dataset')
-parser.add_argument('-a', '--arch', metavar='ARCH', default='resnet50',
+parser.add_argument('-a', '--arch', metavar='ARCH', default='resnet18',
                     choices=model_names,
                     help='model architecture: ' +
                         ' | '.join(model_names) +
@@ -66,11 +66,11 @@ parser.add_argument('-p', '--print-freq', default=10, type=int,
                     metavar='N', help='print frequency (default: 10)')
 parser.add_argument('--resume', default='', type=str, metavar='PATH',
                     help='path to latest checkpoint (default: none)')
-parser.add_argument('--world-size', default=-1, type=int,
+parser.add_argument('--world-size', default=1, type=int,
                     help='number of nodes for distributed training')
-parser.add_argument('--rank', default=-1, type=int,
+parser.add_argument('--rank', default=0, type=int,
                     help='node rank for distributed training')
-parser.add_argument('--dist-url', default='tcp://224.66.41.62:23456', type=str,
+parser.add_argument('--dist-url', default='tcp://localhost:10001', type=str,
                     help='url used to set up distributed training')
 parser.add_argument('--dist-backend', default='nccl', type=str,
                     help='distributed backend')
@@ -109,10 +109,12 @@ parser.add_argument('--cos', action='store_true',
                     help='use cosine lr schedule')
 
 # options for advmoco
-parser.add_argument('--lr-g', '--learning-rate-g', default=0.003, type=float,
+parser.add_argument('--lr-g', '--learning-rate-g', default=0.3, type=float,
                     help='initial learning rate for generator')
 parser.add_argument('--start-adv', default=50, type=int,
                     help='epoch at which adversarial learning starts')
+parser.add_argument('--adv-step', default=1, type=int,
+                    help='number of adversarial steps per iteration')
 parser.add_argument('--inner-step', default=1, type=int,
                     help='number of steps for generator optim')
 
@@ -178,7 +180,7 @@ def main_worker(gpu, ngpus_per_node, args):
     model = advmoco.builder.AdvmoCo(
         models.__dict__[args.arch],
         args.moco_dim, args.moco_k, args.moco_m, args.moco_t, args.moco_alpha, args.mlp)
-    generator = Generator()
+    generator = LinearGenerator(args.moco_dim)
     # print(model)
 
     if args.distributed:
@@ -329,36 +331,43 @@ def train(train_loader, model, generator, criterion, optimizer, optimizer_g, epo
             images[0] = images[0].cuda(args.gpu, non_blocking=True)
             images[1] = images[1].cuda(args.gpu, non_blocking=True)
         
-        # compute output
-        q, k, neg, target = model(im_q=images[0], im_k=images[1])
-        epsilon = generator(images[0], q.detach())
+        for adv_step in range(args.adv_step):
+            # compute output
+            q, k, neg, target = model(im_q=images[0], im_k=images[1])
+            # TODO: for generator inputs, no images but only q.
+            # TODO: reduce negative sample sizes for loss_g
+            # TODO: reduce epsilon size
+            epsilon = generator(q.detach())
 
-        if epoch >= args.start_adv:
-            ### find the best perturbation ###
-            new_epsilon = epsilon
-            for step in range(args.inner_step):
-                loss_g = - criterion(q.detach(), k.detach(), neg.detach(), new_epsilon, target)
-                optimizer_g.zero_grad()
-                loss_g.backward()
-                optimizer_g.step()
-                new_epsilon = generator(images[0], q.detach())
-        else:
-            new_epsilon = torch.zeros_like(q).cuda(args.gpu)
+            if epoch >= args.start_adv:
+                ### find the best perturbation ###
+                new_epsilon = epsilon
+                for step in range(args.inner_step):
+                    loss_g = - criterion(q.detach(), k.detach(), neg.detach(), new_epsilon, target, neg_length=q.size(0))
+                    optimizer_g.zero_grad()
+                    loss_g.backward()
+                    optimizer_g.step()
+                    new_epsilon = generator(q.detach())
+            else:
+                new_epsilon = torch.zeros_like(q).cuda(args.gpu)
 
-        loss = criterion(q, k, neg, new_epsilon.detach(), target)
+            loss = criterion(q, k, neg, new_epsilon.detach(), target)
 
-        # acc1/acc5 are (K+1)-way contrast classifier accuracy
-        # measure accuracy and record loss
-        acc1, acc5 = accuracy(q, k, neg, target, topk=(1, 5))
-        losses.update(loss.item(), images[0].size(0))
-        top1.update(acc1[0], images[0].size(0))
-        top5.update(acc5[0], images[0].size(0))
+            # acc1/acc5 are (K+1)-way contrast classifier accuracy
+            # measure accuracy and record loss
+            acc1, acc5 = accuracy(q, k, neg, target, topk=(1, 5))
+            losses.update(loss.item(), images[0].size(0))
+            top1.update(acc1[0], images[0].size(0))
+            top5.update(acc5[0], images[0].size(0))
 
-        # compute gradient and do SGD step
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
-
+            # compute gradient and do SGD step
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+            
+            if epoch < args.start_adv:
+                break
+            
         # measure elapsed time
         # batch_time.update(time.time() - end)
         # end = time.time()
