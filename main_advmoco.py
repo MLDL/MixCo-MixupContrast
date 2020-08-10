@@ -111,11 +111,11 @@ parser.add_argument('--cos', action='store_true',
 # options for advmoco
 parser.add_argument('--lr-g', '--learning-rate-g', default=0.3, type=float,
                     help='initial learning rate for generator')
-parser.add_argument('--start-adv', default=50, type=int,
+parser.add_argument('--start-adv', default=0, type=int,
                     help='epoch at which adversarial learning starts')
 parser.add_argument('--adv-step', default=1, type=int,
                     help='number of adversarial steps per iteration')
-parser.add_argument('--inner-step', default=1, type=int,
+parser.add_argument('--inner-step', default=3, type=int,
                     help='number of steps for generator optim')
 
 
@@ -334,9 +334,6 @@ def train(train_loader, model, generator, criterion, optimizer, optimizer_g, epo
         for adv_step in range(args.adv_step):
             # compute output
             q, k, neg, target = model(im_q=images[0], im_k=images[1])
-            # TODO: for generator inputs, no images but only q.
-            # TODO: reduce negative sample sizes for loss_g
-            # TODO: reduce epsilon size
             epsilon = generator(q.detach())
 
             if epoch >= args.start_adv:
