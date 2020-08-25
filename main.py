@@ -17,6 +17,8 @@ import architectures as archs
 from builders import *
 from utils import *
 
+builders = {'moco': MoCo, 'mixco1': MixCo1, 'mixco2': MixCo2, 'mixco3': MixCo3}
+
 model_names = sorted(name for name in archs.__dict__
     if name.islower() and not name.startswith("__")
     and callable(archs.__dict__[name]))
@@ -169,8 +171,8 @@ def main_worker(gpu, ngpus_per_node, args):
             archs.__dict__[args.arch],
             args.moco_dim, args.moco_k, args.moco_m, args.moco_t, args.mlp, args.single, args.small_input)
         
-    elif args.builder == 'mixco':
-        model = MixCo(
+    elif 'mixco' in args.builder:
+        model = builders[args.builder](
             archs.__dict__[args.arch],
             args.moco_dim, args.moco_k, args.moco_m, args.moco_t, args.mlp, args.mix_alpha, args.single, args.small_input)   
     print(model)
