@@ -156,10 +156,10 @@ def main_worker(gpu, ngpus_per_node, args):
     args.gpu = gpu
 
     # suppress printing if not master
-    if args.multiprocessing_distributed and args.gpu != 0:
-        def print_pass(*args):
-            pass
-        builtins.print = print_pass
+#     if args.multiprocessing_distributed and args.gpu != 0:
+#         def print_pass(*args):
+#             pass
+#         builtins.print = print_pass
 
     if args.gpu is not None:
         print("Use GPU: {} for training".format(args.gpu))
@@ -353,14 +353,14 @@ def train(train_loader, model, criterion, optimizer, epoch, args):
                     bn_name = name[-10:-7]
                     idx = name[-12]
                     layer_name = name[:-13]
-                   
+                    
                     model_name = '%s[%s].%s' % (layer_name, idx, bn_name)
                 else:
                     model_name = name[:-7]
                     
                 bn_stat[name] = {'mean': eval('model.%s.mean_array' % model_name),
                                  'var': eval('model.%s.var_array' % model_name)}
-           
+        
         return bn_stat
     else:
         return None
