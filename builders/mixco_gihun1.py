@@ -7,9 +7,9 @@ from utils import *
 
 from functools import partial
 
-__all__ = ['MixCo']
+__all__ = ['MixCo1']
 
-class MixCo(nn.Module):
+class MixCo1(nn.Module):
     """
     Build a MoCo model with: a query encoder, a key encoder, and a queue
     https://arxiv.org/abs/1911.05722
@@ -21,7 +21,7 @@ class MixCo(nn.Module):
         m: moco momentum of updating key encoder (default: 0.999)
         T: softmax temperature (default: 0.07)
         """
-        super(MixCo, self).__init__()
+        super(MixCo1, self).__init__()
         
         self.single_gpu = single_gpu
         self.K = K
