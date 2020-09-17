@@ -179,17 +179,20 @@ class ResNet(nn.Module):
     
     def pool_linear(self, x):
         x = self.avgpool(x)
-        x = torch.flatten(x, 1)
-        x = self.fc(x)
+        features = torch.flatten(x, 1)
+        x = self.fc(features)
         
-        return x
+        return x, features
         
-    def forward(self, x):
+    def forward(self, x, get_features=False):
         x = self.conv_stem(x)
         x = self.block_layers(x)
-        x = self.pool_linear(x)
-
-        return x
+        x, features = self.pool_linear(x)
+        
+        if get_features:
+            return x, features
+        else:
+            return x
     
     
 def _resnet(arch, repeats, **kwargs):
