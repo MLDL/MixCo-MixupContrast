@@ -25,13 +25,13 @@ import torchvision.models as models
 from torchvision.datasets import CIFAR10, CIFAR100
 from Datasets import *
 
-import architectures as archs
+#import architectures as archs
 from builders import *
 from utils import *
 
-model_names = sorted(name for name in archs.__dict__
+model_names = sorted(name for name in models.__dict__
     if name.islower() and not name.startswith("__")
-    and callable(archs.__dict__[name]))
+    and callable(models.__dict__[name]))
 
 parser = argparse.ArgumentParser(description='PyTorch ImageNet Training')
 parser.add_argument('--builder', default='moco',
@@ -169,7 +169,7 @@ def main_worker(gpu, ngpus_per_node, args):
     # create model
     print("=> creating model '{}'".format(args.arch))
     model = MoCo(
-        archs.__dict__[args.arch],
+        models.__dict__[args.arch],
         args.moco_dim, args.moco_k, args.moco_m, args.moco_t, args.mlp)
     print(model)
 
